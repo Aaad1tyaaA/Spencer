@@ -1,0 +1,61 @@
+# Project Spencer — production reverse proxy + static host + automatic HTTPS.
+#
+# SITE_ADDRESS selects the hostname AND toggles TLS:
+#   - a real domain (e.g. app.example.com) -> Caddy provisions + renews a
+#     Let's Encrypt certificate automatically (ports 80 + 443 must be reachable).
+#   - ":80" (the default below)            -> plain HTTP, no cert; used for the
+#     local `docker compose up` proof and behind an external TLS terminator.
+# Set it in .env.production (SITE_ADDRESS=...). The backend hostname is the
+# compose service name `backend`.
+
+{$SITE_ADDRESS::80} {
+	encode zstd gzip
+
+	# --- HTTPS + security headers. With a real SITE_ADDRESS, Caddy already redirects
+	# every http:// request to https:// (automatic HTTPS). HSTS then tells browsers to
+	# never try plain HTTP again; browsers ignore it on the plain-HTTP ":80" setup.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		# Only our own code runs, even if some text slips past escaping: no inline or
+		# third-party scripts (fonts are self-hosted), API + WebSocket to this origin only.
+		# PLAUSIBLE_ORIGIN (optional analytics) is the one extra script/connect source.
+		# 'unsafe-inline' is for styles only (chart/grid libraries set inline styles).
+		Content-Security-Policy "default-src 'self'; script-src 'self' {$PLAUSIBLE_ORIGIN:}; connect-src 'self' ws: wss: {$PLAUSIBLE_ORIGIN:}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		-Server
+	}
+
+	# First line of defence for request size (the backend enforces the exact upload cap).
+	# Self-hosters raising SPENCER_MAX_UPLOAD_MB raise MAX_REQUEST_BODY to match (a bit above).
+	request_body {
+		max_size {$MAX_REQUEST_BODY:110MB}
+	}
+
+	# --- API: everything the FastAPI app owns is proxied to the backend. -----
+	# Same-origin, so the browser never issues a cross-origin request and CORS is
+	# irrelevant behind the proxy. Each collection is matched both exactly (e.g. the
+	# POST /sessions that creates a session) and with /* (every nested route,
+	# including the query WebSockets, which reverse_proxy upgrades transparently).
+	# /metrics is deliberately NOT listed: scrape it from inside the compose network.
+	# /docs, /openapi.json and /redoc are not listed either: in production they fall
+	# through to the SPA (a 404 page) instead of publishing a map of the whole API.
+	@api path /auth/* /sessions /sessions/* /workspaces /workspaces/* /dashboards /dashboards/* /admin/* /health
+	handle @api {
+		reverse_proxy backend:8000
+	}
+
+	# --- SPA: serve the built assets; unknown paths fall back to index.html so
+	# the client-side router (history mode) handles deep links like /table, /login.
+	handle {
+		# Hashed build assets never change: cache them for a year. index.html is left
+		# uncached so a new deploy is picked up on the next load.
+		@hashed path /assets/*
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

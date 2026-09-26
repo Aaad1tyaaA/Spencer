@@ -1,0 +1,39 @@
+Spencer Free Use License
+
+Copyright (c) 2026 Aditya. All rights reserved.
+
+"Spencer" means the Spencer software distributed as Docker images (for example
+ghcr.io/aaad1tyaaa/spencer-backend and ghcr.io/aaad1tyaaa/spencer-web) together with this
+install kit.
+
+1. Permission. You may download, install and run Spencer, free of charge, on any number
+   of computers or servers you control, for personal, educational or business purposes,
+   including to analyse your own data or your organisation's data.
+
+2. The install kit. You may copy and modify the files in this install kit (the compose
+   file, scripts, settings and guides) to run Spencer as allowed above.
+
+3. Restrictions. You may not:
+   a. reverse engineer, decompile, disassemble or otherwise attempt to derive the source
+      code of the Docker images, except to the extent applicable law expressly permits
+      this despite this restriction;
+   b. modify the Docker images or create derivative works of them;
+   c. sell, rent, lease, sublicense or redistribute the Docker images, or offer Spencer
+      to third parties as a hosted or managed service, without written permission;
+   d. remove or change any copyright, license or attribution notice.
+
+4. Third-party components. The images include open-source components (for example Python,
+   DuckDB, Postgres, Redis and Caddy) that remain under their own licenses.
+
+5. No warranty. Spencer is provided "as is", without warranty of any kind, express or
+   implied, including fitness for a particular purpose and non-infringement. You are
+   responsible for backing up your data.
+
+6. Limitation of liability. In no event shall the author be liable for any claim, damages
+   or other liability arising from the use of, or inability to use, Spencer.
+
+7. Termination. This permission ends automatically if you break these terms. On
+   termination you must stop using Spencer and delete your copies of the images.
+
+The author may publish Spencer under different terms in the future; those terms would not
+retroactively change this license for versions you already have.

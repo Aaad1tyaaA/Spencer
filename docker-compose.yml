@@ -1,0 +1,134 @@
+# Spencer -- install kit. Runs the published images; see README.md.
+#   web (Caddy) -> the app + HTTPS, backend -> the API, db -> Postgres, redis -> cache.
+# Settings come from .env (the setup script creates it from .env.example).
+# SPENCER_VERSION in .env pins a release (e.g. 1.2.0); default: latest.
+name: spencer
+# Every container rotates its logs (the default json-file driver grows until the disk is full).
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    logging: *logging
+    mem_limit: 2g
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-spencer}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-spencer}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-spencer} -d ${POSTGRES_DB:-spencer}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    logging: *logging
+    volumes:
+      - redis_data:/data
+    command: redis-server --save 60 1 --loglevel warning
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: ghcr.io/aaad1tyaaa/spencer-backend:${SPENCER_VERSION:-latest}
+    restart: unless-stopped
+    logging: *logging
+    # DuckDB gets SPENCER_DUCKDB_MEMORY_LIMIT; this cap keeps a runaway query from starving
+    # Postgres/Redis on the same VM. Default sized for the Always Free A1 (2 OCPU / 12 GB):
+    # 7g backend + 2g Postgres + Redis + OS. Bigger VM: raise BACKEND_MEM_LIMIT in .env.
+    mem_limit: ${BACKEND_MEM_LIMIT:-7g}
+    # Let DuckDB checkpoint and close cleanly on `docker compose down` / redeploys.
+    stop_grace_period: 60s
+    # Every variable in .env reaches the backend (optional ones like
+    # SPENCER_KEY_ENCRYPTION_SECRET used to be silently dropped). The explicit list below
+    # only adds defaults and required checks on top.
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      SPENCER_ENV: production
+      SPENCER_JWT_SECRET: ${SPENCER_JWT_SECRET:?set SPENCER_JWT_SECRET in .env (openssl rand -hex 32)}
+      SPENCER_APP_DB_URL: postgresql+psycopg://${POSTGRES_USER:-spencer}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-spencer}
+      SPENCER_ALLOW_REGISTRATION: ${SPENCER_ALLOW_REGISTRATION:-false}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      SPENCER_JWT_EXPIRY_HOURS: ${SPENCER_JWT_EXPIRY_HOURS:-24}
+      SPENCER_OWNED_SESSION_TTL_DAYS: ${SPENCER_OWNED_SESSION_TTL_DAYS:-30}
+      SPENCER_MAX_UPLOAD_MB: ${SPENCER_MAX_UPLOAD_MB:-100}
+      SPENCER_DUCKDB_MEMORY_LIMIT: ${SPENCER_DUCKDB_MEMORY_LIMIT:-4GB}
+      SPENCER_FRONTEND_URL: ${SPENCER_FRONTEND_URL:?set SPENCER_FRONTEND_URL in .env (https://your-domain), used in reset links}
+      SPENCER_OWNED_RETENTION_DAYS: ${SPENCER_OWNED_RETENTION_DAYS:-0}
+      SPENCER_BACKUP_INTERVAL_HOURS: ${SPENCER_BACKUP_INTERVAL_HOURS:-24}
+      SPENCER_BACKUP_KEEP: ${SPENCER_BACKUP_KEEP:-7}
+      SPENCER_SMTP_HOST: ${SPENCER_SMTP_HOST:-}
+      SPENCER_SMTP_PORT: ${SPENCER_SMTP_PORT:-587}
+      SPENCER_SMTP_USERNAME: ${SPENCER_SMTP_USERNAME:-}
+      SPENCER_SMTP_PASSWORD: ${SPENCER_SMTP_PASSWORD:-}
+      SPENCER_SMTP_FROM: ${SPENCER_SMTP_FROM:-}
+      SPENCER_SMTP_STARTTLS: ${SPENCER_SMTP_STARTTLS:-true}
+      SPENCER_SMTP_SSL: ${SPENCER_SMTP_SSL:-false}
+      SPENCER_AI_PROMPTS_PER_DAY: ${SPENCER_AI_PROMPTS_PER_DAY:-5}
+      SPENCER_AI_USAGE_TIMEZONE: ${SPENCER_AI_USAGE_TIMEZONE:-UTC}
+      SPENCER_AI_REQUESTS_PER_MINUTE: ${SPENCER_AI_REQUESTS_PER_MINUTE:-20}
+      SPENCER_MAX_WORKSPACES_PER_USER: ${SPENCER_MAX_WORKSPACES_PER_USER:-3}
+      # LLM keys (optional): supply whichever provider you use. Blank = AI layer off.
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_API_KEYS: ${GEMINI_API_KEYS:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_API_KEYS: ${ANTHROPIC_API_KEYS:-}
+      SPENCER_LLM_MODEL: ${SPENCER_LLM_MODEL:-}
+      SPENCER_LLM_FALLBACK_MODELS: ${SPENCER_LLM_FALLBACK_MODELS:-}
+    volumes:
+      - backend_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  web:
+    image: ghcr.io/aaad1tyaaa/spencer-web:${SPENCER_VERSION:-latest}
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      # Empty -> Caddy applies its own ":80" default (plain HTTP). Set a domain in
+      # .env (SITE_ADDRESS=app.example.com) for automatic HTTPS.
+      SITE_ADDRESS: ${SITE_ADDRESS:-}
+      # Analytics script origin allowed by the CSP (e.g. https://plausible.io). Empty = none.
+      PLAUSIBLE_ORIGIN: ${PLAUSIBLE_ORIGIN:-}
+      # Largest request Caddy accepts; keep it a little above SPENCER_MAX_UPLOAD_MB.
+      MAX_REQUEST_BODY: ${MAX_REQUEST_BODY:-110MB}
+    ports:
+      # HTTP_PORT / HTTPS_PORT in .env when 80/443 are taken on this machine (e.g. 8080).
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pg_data:
+  redis_data:
+  backend_data:
+  caddy_data:
+  caddy_config:
