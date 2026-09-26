@@ -149,8 +149,10 @@ Two options, and you can use both:
 1. In [Google Cloud Console](https://console.cloud.google.com) create a project, then
    **APIs & Services → OAuth consent screen** (External; scopes email, profile, openid).
 2. **Credentials → Create credentials → OAuth client ID → Web application**, and add your
-   Spencer address under **Authorized JavaScript origins** (e.g. `https://bi.example.com`,
-   or `http://localhost` for a local install).
+   Spencer address followed by `/login/google` under **Authorized redirect URIs**
+   (e.g. `https://bi.example.com/login/google`, or `http://localhost/login/google` for a
+   local install). While the consent screen is in "Testing", only its test users can sign
+   in; press **Publish app** to open it to everyone.
 3. Put the client ID in `.env`: `SPENCER_GOOGLE_CLIENT_ID=1234-abc.apps.googleusercontent.com`,
    then `docker compose up -d`. A "Continue with Google" button appears on the sign-in page.
 

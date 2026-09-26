@@ -24,7 +24,7 @@
 		# third-party scripts (fonts are self-hosted), API + WebSocket to this origin only.
 		# PLAUSIBLE_ORIGIN (optional analytics) is the one extra script/connect source.
 		# 'unsafe-inline' is for styles only (chart/grid libraries set inline styles).
-		Content-Security-Policy "default-src 'self'; script-src 'self' https://accounts.google.com {$PLAUSIBLE_ORIGIN:}; connect-src 'self' ws: wss: https://accounts.google.com {$PLAUSIBLE_ORIGIN:}; style-src 'self' 'unsafe-inline' https://accounts.google.com; frame-src https://accounts.google.com; img-src 'self' data: blob:; font-src 'self' data:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		Content-Security-Policy "default-src 'self'; script-src 'self' {$PLAUSIBLE_ORIGIN:}; connect-src 'self' ws: wss: {$PLAUSIBLE_ORIGIN:}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 		-Server
 	}
 
