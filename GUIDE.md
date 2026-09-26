@@ -144,6 +144,19 @@ Two options, and you can use both:
   `SPENCER_LLM_MODEL=gemini/gemini-3.6-flash`, then `docker compose up -d`. Everyone shares
   it within `SPENCER_AI_PROMPTS_PER_DAY`.
 
+### Sign in with Google (optional)
+
+1. In [Google Cloud Console](https://console.cloud.google.com) create a project, then
+   **APIs & Services → OAuth consent screen** (External; scopes email, profile, openid).
+2. **Credentials → Create credentials → OAuth client ID → Web application**, and add your
+   Spencer address under **Authorized JavaScript origins** (e.g. `https://bi.example.com`,
+   or `http://localhost` for a local install).
+3. Put the client ID in `.env`: `SPENCER_GOOGLE_CLIENT_ID=1234-abc.apps.googleusercontent.com`,
+   then `docker compose up -d`. A "Continue with Google" button appears on the sign-in page.
+
+Google accounts arrive with a verified email, so they don't use your daily email allowance
+(`SPENCER_EMAIL_DAILY_LIMIT`), and an existing account with the same email is linked.
+
 ## 6. Update, back up, uninstall
 
 **Update to the latest version** (your data is kept; database changes apply on start). In
